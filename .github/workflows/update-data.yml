@@ -1,0 +1,45 @@
+name: データ自動更新
+
+on:
+  schedule:
+    # 毎朝6:00 JST = 21:00 UTC（前日）
+    - cron: '0 21 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: Pythonをセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 依存ライブラリをインストール
+        run: pip install -r scripts/requirements.txt
+
+      - name: データ取得・ビルド
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+          DRIVE_FOLDER_POS: ${{ secrets.DRIVE_FOLDER_POS }}
+          DRIVE_FOLDER_GENZAIKO: ${{ secrets.DRIVE_FOLDER_GENZAIKO }}
+          DRIVE_FOLDER_NYUKA: ${{ secrets.DRIVE_FOLDER_NYUKA }}
+        run: python scripts/build.py
+
+      - name: 変更をコミット・push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add closeout.html zenbumon.html
+          if git diff --cached --quiet; then
+            echo "変更なし（データに更新がありませんでした）"
+          else
+            git commit -m "データ自動更新 $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
